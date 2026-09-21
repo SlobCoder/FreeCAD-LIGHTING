@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: LGPL-2.1-or-later
+# Modified 2026 by SlobCoder for the FreeCAD-LIGHTING fork - see FORK-CHANGES.md.
 
 set(PartGui_LIBS
     Part
