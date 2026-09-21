@@ -95,6 +95,8 @@ SET(PartGui_SRCS
     Mirroring.cpp
     Mirroring.h
     Mirroring.ui
+    MeshCache.cpp
+    MeshCache.h
     DlgBooleanOperation.cpp
     DlgBooleanOperation.h
     DlgBooleanOperation.ui

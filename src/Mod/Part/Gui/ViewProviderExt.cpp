@@ -88,6 +88,7 @@
 
 #include "ViewProviderExt.h"
 #include "ViewProviderPartExtPy.h"
+#include "MeshCache.h"
 #include "SoBrepEdgeSet.h"
 #include "SoBrepFaceSet.h"
 #include "SoBrepPointSet.h"
@@ -1097,21 +1098,66 @@ void ViewProviderPartExt::setupCoinGeometry(
     // create or use the mesh on the data structure
     Standard_Real AngDeflectionRads = Base::toRadians(angularDeflection);
 
-    IMeshTools_Parameters meshParams;
-    meshParams.Deflection = deflection;
-    meshParams.Relative = Standard_False;
-    meshParams.Angle = AngDeflectionRads;
-    meshParams.InParallel = Standard_True;
-    meshParams.AllowQualityDecrease = Standard_True;
+    // Check if a previously computed triangulation can be reused (mesh
+    // caches). Skip only the expensive Clean + re-mesh phase; the
+    // post-processing below (location reset, triangle counting, Coin scene
+    // graph setup) must still run, otherwise the model would be invisible.
+    ParameterGrp::handle hGrpMesh = App::GetApplication().GetParameterGroupByPath(
+        "User parameter:BaseApp/Preferences/Mod/Part"
+    );
 
-    // Clear triangulation and PCurves from geometry which can slow down the process
+    // Use coarser tolerance for face interiors (biggest perf win for NURBS):
+    // boundary edges need fine discretization for watertightness, but the
+    // interior can be coarser without visible difference.
+    const double interiorFactor = hGrpMesh->GetFloat("MeshInteriorDeflection", 4.0);
+    const double interiorAngleFactor = hGrpMesh->GetFloat("MeshInteriorAngle", 2.0);
+
+    // The sidecar mesh cache key covers every parameter that influences the
+    // generated triangulation.
+    PartGui::MeshCache meshCache;
+    PartGui::MeshCache::Params meshCacheParams;
+    meshCacheParams.deflection = deflection;
+    meshCacheParams.angle = AngDeflectionRads;
+    meshCacheParams.deflectionInterior = (interiorFactor > 1.0) ? deflection * interiorFactor : -1.0;
+    meshCacheParams.angleInterior = (interiorAngleFactor > 1.0)
+        ? AngDeflectionRads * interiorAngleFactor
+        : -1.0;
+    meshCacheParams.relative = false;
+
+    const bool hasValidCachedMesh = (hGrpMesh->GetBool("CacheTriangulation", false)
+                                     && BRepTools::Triangulation(shape, deflection))
+        || meshCache.restoreMesh(shape, meshCacheParams);
+    bool meshWasComputed = false;
+
+    if (!hasValidCachedMesh) {
+        IMeshTools_Parameters meshParams;
+        meshParams.Deflection = deflection;
+        meshParams.Relative = Standard_False;
+        meshParams.Angle = AngDeflectionRads;
+        meshParams.InParallel = Standard_True;
+        meshParams.AllowQualityDecrease = Standard_True;
+        if (interiorFactor > 1.0) {
+            meshParams.DeflectionInterior = deflection * interiorFactor;
+        }
+        if (interiorAngleFactor > 1.0) {
+            meshParams.AngleInterior = AngDeflectionRads * interiorAngleFactor;
+        }
+
+        // Clear triangulation and PCurves from geometry which can slow down the process
+        // (only needed when re-meshing; skipped above when cache is valid)
 #if OCC_VERSION_HEX < 0x070600
-    BRepTools::Clean(shape);
+        BRepTools::Clean(shape);
 #else
-    BRepTools::Clean(shape, Standard_True);
+        BRepTools::Clean(shape, Standard_True);
 #endif
 
-    BRepMesh_IncrementalMesh(shape, meshParams);
+        BRepMesh_IncrementalMesh(shape, meshParams);
+        meshWasComputed = true;
+    }  // !hasValidCachedMesh
+
+    // The sidecar cache is keyed and stored with the shape's original
+    // location; keep a reference before the location is reset below.
+    const TopoDS_Shape meshCacheShape = shape;
 
     // We must reset the location here because the transformation data
     // are set in the placement property
@@ -1488,6 +1534,13 @@ void ViewProviderPartExt::setupCoinGeometry(
         numLines
     );
 #endif
+
+    if (meshWasComputed && meshCache.isEnabled()) {
+        // Store the fresh triangulation in the sidecar cache. Done at the end
+        // so that normals derived from the surface have been written back
+        // into the triangulations and are cached as well.
+        meshCache.storeMesh(meshCacheShape, meshCacheParams);
+    }
 }
 
 void ViewProviderPartExt::setupCoinGeometry(

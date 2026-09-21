@@ -23,6 +23,7 @@
 
 #pragma once
 
+#include <Inventor/elements/SoLazyElement.h>
 #include <Inventor/fields/SoMFInt32.h>
 #include <Inventor/fields/SoSFColor.h>
 #include <Inventor/nodes/SoIndexedFaceSet.h>
@@ -30,6 +31,10 @@
 #include <vector>
 #include <Gui/Selection/SoFCSelectionContext.h>
 #include <Mod/Part/PartGlobal.h>
+
+class SoFieldSensor;
+class SoSensor;
+class SoMaterial;
 
 
 namespace PartGui
@@ -112,6 +117,7 @@ protected:
     ) override;
     void generatePrimitives(SoAction* action) override;
     void getBoundingBox(SoGetBoundingBoxAction* action) override;
+    void rayPick(SoRayPickAction* action) override;
 
 private:
     enum Binding
@@ -135,6 +141,18 @@ private:
 
     bool overrideMaterialBinding(SoGLRenderAction* action, SelContextPtr ctx, SelContextPtr ctx2);
 
+    // Installs per-vertex diffuse colors (through an internal SoMaterial
+    // that registers a color VBO with per-vertex alpha) so that Coin renders
+    // this shape through its vertex-array path instead of the legacy
+    // immediate-mode path. Returns false when the current colors cannot be
+    // expressed that way (tiny geometry, no VBO support, ...).
+    bool setupVertexColorMaterial(
+        SoGLRenderAction* action,
+        const std::vector<uint32_t>& colors,
+        const std::vector<int32_t>& perPartMaterialIndex,
+        int numCoordIndices
+    );
+
 #ifdef RENDER_GLARRAYS
     void renderSimpleArray();
     void renderColoredArray(SoMaterialBundle* const materials);
@@ -149,6 +167,44 @@ private:
     SelContextPtr selContext2;
     std::vector<int32_t> matIndex;
     std::vector<uint32_t> packedColors;
+
+    // Cached state for setupVertexColorMaterial(). Coin's vertex-array
+    // renderer only engages for PER_VERTEX_INDEXED materials with an empty
+    // materialIndex field, so per-part colors are expanded per vertex here.
+    // Geometry changes are tracked with field sensors because Coin declares
+    // SoIndexedFaceSet::notify() private.
+    void markVAGeometryDirty();
+    static void vaGeometryChangedCB(void* data, SoSensor* sensor);
+    bool vaGeomDirty {true};
+    SoFieldSensor* vaCoordSensor {nullptr};
+    SoFieldSensor* vaPartSensor {nullptr};
+    std::vector<int32_t> vaPartOfVertex;  // coordinate index -> part index (-1 = unreferenced)
+    std::vector<SbColor> vaVertexColors;
+    std::vector<float> vaVertexTransparencies;  // only filled when per-part alphas differ
+    std::vector<uint32_t> vaPackedKey;
+    std::vector<int32_t> vaPartKey;
+    SoMaterial* vaMaterial {nullptr};
+
+    // BVH-accelerated ray picking: replaces Coin's O(n) generatePrimitives
+    // sweep over all triangles with an O(log n) box-tree traversal per pick.
+    struct PickNode
+    {
+        float bmin[3];
+        float bmax[3];
+        uint32_t left;  // node indices; invalid for leaves
+        uint32_t right;
+        uint32_t start;  // leaf: first triangle in the BVH-ordered arrays
+        uint32_t count;  // leaf: triangle count (0 for internal nodes)
+    };
+    bool pickBVHDirty {true};
+    std::vector<PickNode> pickNodes;
+    std::vector<uint32_t> pickTriVerts;  // 3 coordinate indices per triangle (BVH order)
+    std::vector<uint32_t> pickTriPart;   // part index per triangle (BVH order)
+    std::vector<uint32_t> pickTriOrig;   // original triangle ordinal (BVH order)
+    const void* pickCoordsPtr {nullptr};
+    int pickCoordsNum {0};
+    bool buildPickBVH(SoState* state);
+
     uint32_t packedColor;
     Gui::SoFCSelectionCounter selCounter;
 

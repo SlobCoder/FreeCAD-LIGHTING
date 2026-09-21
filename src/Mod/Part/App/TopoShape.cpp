@@ -160,6 +160,7 @@
 #include <boost/core/ignore_unused.hpp>
 
 #include <App/Material.h>
+#include <App/Application.h>
 #include <App/ElementNamingUtils.h>
 #include <Base/BoundBox.h>
 #include <Base/Builder3D.h>
@@ -964,7 +965,12 @@ void TopoShape::exportBrep(std::ostream& out) const
         VERSION_2 = 2,
         VERSION_3 = 3
     };
-    BRepTools_ShapeSet SS(Standard_False);
+    // Check preference: cache triangulation in the BRep stream for faster
+    // document loading. Opt-in because it increases file size.
+    bool cacheMesh = App::GetApplication()
+                         .GetParameterGroupByPath("User parameter:BaseApp/Preferences/Mod/Part")
+                         ->GetBool("CacheTriangulation", false);
+    BRepTools_ShapeSet SS(cacheMesh ? Standard_True : Standard_False);
     SS.SetFormatNb(VERSION_1);
     SS.Add(this->_Shape);
     SS.Write(out);
