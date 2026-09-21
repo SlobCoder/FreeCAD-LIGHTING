@@ -317,6 +317,34 @@ target_include_directories(
 )
 target_link_libraries(PartGui ${PartGui_LIBS})
 
+# Sidecar mesh cache compression (optional; falls back to uncompressed blobs
+# when zstd is not available). The zstd CMake config does not set
+# <pkg>_<component>_FOUND, so zstd_FOUND stays FALSE even on success - rely on
+# TARGET checks instead and never include the config twice.
+if(NOT TARGET zstd::libzstd AND NOT TARGET zstd::libzstd_shared)
+    find_package(zstd CONFIG QUIET COMPONENTS libzstd_shared)
+endif()
+if(NOT TARGET zstd::libzstd AND NOT TARGET zstd::libzstd_shared)
+    find_package(PkgConfig QUIET)
+    if(PkgConfig_FOUND)
+        pkg_check_modules(ZSTD QUIET IMPORTED_TARGET libzstd)
+    endif()
+endif()
+if(TARGET zstd::libzstd)
+    target_link_libraries(PartGui zstd::libzstd)
+    target_compile_definitions(PartGui PRIVATE FC_MESHCACHE_HAVE_ZSTD)
+elseif(TARGET zstd::libzstd_shared)
+    target_link_libraries(PartGui zstd::libzstd_shared)
+    target_compile_definitions(PartGui PRIVATE FC_MESHCACHE_HAVE_ZSTD)
+    message(STATUS "PartGui: using zstd via CMake config (mesh cache compression enabled)")
+elseif(TARGET PkgConfig::ZSTD)
+    target_link_libraries(PartGui PkgConfig::ZSTD)
+    target_compile_definitions(PartGui PRIVATE FC_MESHCACHE_HAVE_ZSTD)
+    message(STATUS "PartGui: using zstd via pkg-config (mesh cache compression enabled)")
+else()
+    message(STATUS "PartGui: zstd not found - mesh cache blobs will be uncompressed")
+endif()
+
 if (MSVC)
     target_compile_options(PartGui PRIVATE /wd4251 /wd4273)
 endif()

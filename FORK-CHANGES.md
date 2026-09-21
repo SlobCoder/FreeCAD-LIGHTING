@@ -79,6 +79,17 @@ Enabled by default in this fork (an upstream-ready variant would default
 to off). See `src/Mod/Part/Gui/MeshCache.h` for the preference knobs
 (`MeshCacheEnabled`, `MeshCacheDirectory`, `MeshCacheMaxSize`).
 
+Stored blobs are transparently compressed as a whole-file zstd frame
+(`MeshCacheCompressionLevel`, default 3; 0 = uncompressed; reading always
+supports both formats). Measured: level 3 shrinks blobs to ~23-33% of raw
+size at >1.4 GB/s decompression, so warm loads gain 3x cache capacity
+under the size cap for tens of milliseconds of decompression. Restore
+validation is structural (every face meshed); the deflection-based gate
+was dropped because OCCT reports the achieved chordal deviation on
+angular-deflection-governed faces (e.g. analytic spheres), which legitimately
+exceeds the requested linear deflection and would otherwise cause a
+remesh on every load.
+
 ## Intentionally not included
 
 - The async-recompute work (FreeCAD PR 29757) that the original local

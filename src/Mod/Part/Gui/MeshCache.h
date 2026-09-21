@@ -46,6 +46,14 @@ namespace PartGui
  *   to the user cache location + "/MeshCache".
  * - MeshCacheMaxSize (float MiB, default 1024): total size cap; oldest
  *   entries are evicted when exceeded.
+ * - MeshCacheCompressionLevel (int, default 3): zstd compression level for
+ *   stored blobs; 0 stores uncompressed. Reading always supports both
+ *   formats. Requires a build with zstd found (FC_MESHCACHE_HAVE_ZSTD),
+ *   otherwise blobs are stored uncompressed.
+ *
+ * Compressed blobs are a whole-file zstd frame around the regular blob
+ * layout, detected via the zstd frame magic; the two formats coexist in
+ * one cache directory.
  *
  * Cache keys are SHA-256 over the meshing parameters, the OCCT version and
  * a triangulation-free BRep serialization of the shape, so any topology or
@@ -90,6 +98,7 @@ private:
     bool myEnabled;
     QString myDirectory;
     qint64 myMaxBytes;
+    int myCompressionLevel = 0;
     QByteArray myKey;
 };
 

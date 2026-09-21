@@ -30,6 +30,7 @@
 
 #include <QByteArray>
 #include <QByteArrayView>
+#include <QBuffer>
 #include <QCoreApplication>
 #include <QCryptographicHash>
 #include <QDataStream>
@@ -38,6 +39,10 @@
 #include <QFileInfo>
 #include <QStandardPaths>
 #include <QString>
+
+#ifdef FC_MESHCACHE_HAVE_ZSTD
+# include <zstd.h>
+#endif
 
 #include <App/Application.h>
 #include <Base/Console.h>
@@ -89,6 +94,60 @@ namespace
 //            [parameters f64]
 constexpr char BlobMagic[8] = {'F', 'C', 'M', 'E', 'S', 'H', '0', '1'};
 constexpr quint32 BlobVersion = 1;
+
+// Zstd frame magic (0xFD2FB528, little-endian on disk). Compressed blobs are
+// a whole-file zstd frame around the regular blob layout; the reader detects
+// them by these leading bytes, so compressed and legacy blobs coexist.
+constexpr unsigned char ZstdFrameMagic[4] = {0x28, 0xB5, 0x2F, 0xFD};
+
+#ifdef FC_MESHCACHE_HAVE_ZSTD
+
+// Returns the zstd-compressed copy of theRaw, or an empty array on error.
+QByteArray compressZstd(const QByteArray& theRaw, int theLevel)
+{
+    const size_t aBound = ZSTD_compressBound(size_t(theRaw.size()));
+    QByteArray aOut(qsizetype(aBound), Qt::Uninitialized);
+    const size_t aRc =
+        ZSTD_compress(aOut.data(), aBound, theRaw.constData(), size_t(theRaw.size()), theLevel);
+    if (ZSTD_isError(aRc)) {
+        return QByteArray();
+    }
+    aOut.resize(qsizetype(aRc));
+    return aOut;
+}
+
+// Returns the decompressed payload of a whole-file zstd frame. Handles frames
+// without a content-size header via a bounded grow-and-retry loop.
+QByteArray decompressZstd(const QByteArray& theCompressed)
+{
+    const unsigned long long aContentSize =
+        ZSTD_getFrameContentSize(theCompressed.constData(), size_t(theCompressed.size()));
+    if (aContentSize == ZSTD_CONTENTSIZE_ERROR) {
+        return QByteArray();
+    }
+    size_t aCapacity = (aContentSize == ZSTD_CONTENTSIZE_UNKNOWN)
+        ? size_t(qMax<qsizetype>(theCompressed.size() * 4, 16 * 1024 * 1024))
+        : size_t(aContentSize);
+    for (int anAttempt = 0; anAttempt < 8; ++anAttempt) {
+        if (aCapacity > (size_t(3) << 30)) {  // refuse absurd frames (> 3 GiB)
+            break;
+        }
+        QByteArray aOut(qsizetype(aCapacity), Qt::Uninitialized);
+        const size_t aRc = ZSTD_decompress(aOut.data(), aCapacity, theCompressed.constData(),
+                                           size_t(theCompressed.size()));
+        if (!ZSTD_isError(aRc)) {
+            aOut.resize(qsizetype(aRc));
+            return aOut;
+        }
+        if (ZSTD_getErrorCode(aRc) != ZSTD_error_dstSize_tooSmall) {
+            return QByteArray();
+        }
+        aCapacity *= 2;
+    }
+    return QByteArray();
+}
+
+#endif  // FC_MESHCACHE_HAVE_ZSTD
 
 // Returns the polygons of theEdge stored on theTriangulation. Seam edges on
 // closed surfaces carry two polygons (one per seam side).
@@ -183,6 +242,18 @@ MeshCache::MeshCache()
         aMaxSizeMiB = 1024.0;
     }
     myMaxBytes = qint64(aMaxSizeMiB * 1024.0 * 1024.0);
+
+    // Zstd level used when storing blobs; 0 stores uncompressed. Reading
+    // always supports both formats regardless of this setting.
+    int aLevel = hGrp->GetInt("MeshCacheCompressionLevel", 3);
+#ifdef FC_MESHCACHE_HAVE_ZSTD
+    if (aLevel < 0 || aLevel > 22) {
+        aLevel = 3;
+    }
+#else
+    aLevel = 0;  // built without zstd: never compress
+#endif
+    myCompressionLevel = aLevel;
 }
 
 QByteArray MeshCache::computeKey(const TopoDS_Shape& theShape, const Params& theParams) const
@@ -229,8 +300,23 @@ bool MeshCache::restoreMesh(const TopoDS_Shape& theShape, const Params& theParam
     if (!aFile.open(QIODevice::ReadOnly)) {
         return false;  // cache miss
     }
+    const QByteArray aRaw = aFile.readAll();
+    aFile.close();
 
-    QDataStream aStream(&aFile);
+    // Compressed blobs are a whole-file zstd frame around the regular layout.
+    QByteArray aPayload = aRaw;
+#ifdef FC_MESHCACHE_HAVE_ZSTD
+    if (aRaw.size() >= 4 && memcmp(aRaw.constData(), ZstdFrameMagic, sizeof(ZstdFrameMagic)) == 0) {
+        aPayload = decompressZstd(aRaw);
+        if (aPayload.isEmpty()) {
+            QFile::remove(aPath);
+            Base::Console().log("MeshCache: removed undecodable zstd blob %s\n", qPrintable(aPath));
+            return false;
+        }
+    }
+#endif
+
+    QDataStream aStream(&aPayload, QIODevice::ReadOnly);
     aStream.setByteOrder(QDataStream::LittleEndian);
     aStream.setFloatingPointPrecision(QDataStream::DoublePrecision);
 
@@ -253,7 +339,6 @@ bool MeshCache::restoreMesh(const TopoDS_Shape& theShape, const Params& theParam
         || aBlobAngle != theParams.angle || aBlobDeflectionInterior != theParams.deflectionInterior
         || aBlobAngleInterior != theParams.angleInterior
         || aBlobRelative != quint8(theParams.relative ? 1 : 0)) {
-        aFile.close();
         QFile::remove(aPath);
         Base::Console().log("MeshCache: removed incompatible blob %s\n", qPrintable(aPath));
         return false;
@@ -263,7 +348,6 @@ bool MeshCache::restoreMesh(const TopoDS_Shape& theShape, const Params& theParam
     TopExp::MapShapes(theShape, TopAbs_FACE, aFaceMap);
     if (aFaceMap.Extent() != int(aFaceCount)) {
         // Topology does not match the cached entry; fall back to meshing.
-        aFile.close();
         QFile::remove(aPath);
         Base::Console().log("MeshCache: face count mismatch, removed %s\n", qPrintable(aPath));
         return false;
@@ -397,7 +481,26 @@ bool MeshCache::restoreMesh(const TopoDS_Shape& theShape, const Params& theParam
         return false;
     }
 
-    return BRepTools::Triangulation(theShape, theParams.deflection);
+    // Structural validation only: the SHA-256 key already guarantees that
+    // shape content and meshing parameters match, and the stream status
+    // checks above reject truncated or corrupt blobs. Do NOT validate via
+    // BRepTools::Triangulation(shape, requestedDeflection) here: on faces
+    // where the angular deflection governs (e.g. analytic spheres) OCCT
+    // reports the achieved chordal deviation, which can legitimately exceed
+    // the requested linear deflection - rejecting those would remesh on
+    // every load although the stored mesh is exactly what the mesher
+    // produced for these parameters.
+    TopTools_IndexedMapOfShape aCheckFaceMap;
+    TopExp::MapShapes(theShape, TopAbs_FACE, aCheckFaceMap);
+    for (int i = 1; i <= aCheckFaceMap.Extent(); ++i) {
+        TopLoc_Location aCheckLoc;
+        if (BRep_Tool::Triangulation(TopoDS::Face(aCheckFaceMap(i)), aCheckLoc).IsNull()) {
+            Base::Console().log("MeshCache: face %d has no triangulation after restore\n", i);
+            QFile::remove(aPath);
+            return false;
+        }
+    }
+    return true;
 }
 
 bool MeshCache::storeMesh(const TopoDS_Shape& theShape, const Params& theParams)
@@ -418,13 +521,14 @@ bool MeshCache::writeBlob(const TopoDS_Shape& theShape, const Params& theParams)
     const QString aTmpPath = aTargetPath + QLatin1String(".tmp")
         + QString::number(QCoreApplication::applicationPid());
 
-    QFile aFile(aTmpPath);
-    if (!aFile.open(QIODevice::WriteOnly)) {
-        Base::Console().log("MeshCache: cannot write %s\n", qPrintable(aTmpPath));
+    // The blob payload is assembled in memory first so that optional zstd
+    // compression wraps the complete regular layout in one frame.
+    QByteArray aPayload;
+    QBuffer aBuffer(&aPayload);
+    if (!aBuffer.open(QIODevice::WriteOnly)) {
         return false;
     }
-
-    QDataStream aStream(&aFile);
+    QDataStream aStream(&aBuffer);
     aStream.setByteOrder(QDataStream::LittleEndian);
     aStream.setFloatingPointPrecision(QDataStream::DoublePrecision);
 
@@ -526,12 +630,29 @@ bool MeshCache::writeBlob(const TopoDS_Shape& theShape, const Params& theParams)
         }
     }
 
-    aFile.close();
-    if (aFile.error() != QFile::NoError) {
+    aBuffer.close();
+
+    QByteArray aBytes = aPayload;
+#ifdef FC_MESHCACHE_HAVE_ZSTD
+    if (myCompressionLevel > 0) {
+        const QByteArray aCompressed = compressZstd(aPayload, myCompressionLevel);
+        if (!aCompressed.isEmpty()) {
+            aBytes = aCompressed;
+        }
+        else {
+            Base::Console().log("MeshCache: zstd compression failed, storing uncompressed\n");
+        }
+    }
+#endif
+
+    QFile aFile(aTmpPath);
+    if (!aFile.open(QIODevice::WriteOnly) || aFile.write(aBytes) != aBytes.size()) {
+        aFile.close();
         QFile::remove(aTmpPath);
         Base::Console().log("MeshCache: write error on %s\n", qPrintable(aTmpPath));
         return false;
     }
+    aFile.close();
 
     QFile::remove(aTargetPath);  // no-op if absent; makes rename portable
     if (!QFile::rename(aTmpPath, aTargetPath)) {

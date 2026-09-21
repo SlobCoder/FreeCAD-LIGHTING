@@ -1,3 +1,4 @@
+# Modified 2026 by SlobCoder for the FreeCAD-LIGHTING fork - see FORK-CHANGES.md.
 [workspace]
 name = "FreeCAD"
 version = "26.3.0"
@@ -72,6 +73,7 @@ xerces-c = "*"
 xlutils = "*"
 yaml-cpp = "*"
 zlib = "*"
+zstd = "*"  # FreeCAD-LIGHTING: sidecar mesh cache compression
 zstd = "*"
 compiler-rt = ">=18.1.8,<22"
 blas = { version = "*", build = "openblas*" }
