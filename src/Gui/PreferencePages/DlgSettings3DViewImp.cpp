@@ -20,6 +20,7 @@
  *                                                                         *
  ***************************************************************************/
 
+// Modified 2026 by SlobCoder for the FreeCAD-LIGHTING fork - see FORK-CHANGES.md.
 
 #include <QApplication>
 #include <QMessageBox>
@@ -31,7 +32,9 @@
 #include <App/Application.h>
 #include <Base/Parameter.h>
 #include <Base/Tools.h>
+#include <Gui/MainWindow.h>
 #include <Gui/Multisample.h>
+#include <Gui/View3DInventor.h>
 #include <Gui/View3DInventorViewer.h>
 #include <Gui/ViewParams.h>
 
@@ -60,6 +63,7 @@ void DlgSettings3DViewImp::saveSettings()
     saveMarkerSize();
 
     ui->comboTransparentRender->onSave();
+    ui->comboTransparencyType->onSave();
     ui->CheckBox_CornerCoordSystem->onSave();
     ui->SpinBox_CornerCoordSystemSize->onSave();
     ui->CheckBox_ShowAxisCross->onSave();
@@ -75,6 +79,17 @@ void DlgSettings3DViewImp::saveSettings()
     ui->xAxisColor->onSave();
     ui->yAxisColor->onSave();
     ui->zAxisColor->onSave();
+
+    // apply the transparency type to all open 3D views immediately
+    // (new views pick it up in View3DInventorViewer::init)
+    int transparencyType = ui->comboTransparencyType->currentIndex();
+    if (transparencyType < 0 || transparencyType > 11) {
+        transparencyType = SoGLRenderAction::SORTED_OBJECT_BLEND;
+    }
+    const auto type = static_cast<SoGLRenderAction::TransparencyType>(transparencyType);
+    for (auto* view : Gui::getMainWindow()->findChildren<Gui::View3DInventor*>()) {
+        view->getViewer()->getSoRenderManager()->getGLRenderAction()->setTransparencyType(type);
+    }
 }
 
 void DlgSettings3DViewImp::loadSettings()
@@ -92,6 +107,7 @@ void DlgSettings3DViewImp::loadSettings()
     ui->radioPerspective->onRestore();
     ui->radioOrthographic->onRestore();
     ui->comboTransparentRender->onRestore();
+    ui->comboTransparencyType->onRestore();
     ui->xAxisColor->onRestore();
     ui->yAxisColor->onRestore();
     ui->zAxisColor->onRestore();

@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
+<!-- Modified 2026 by SlobCoder for the FreeCAD-LIGHTING fork - see FORK-CHANGES.md. -->
 <ui version="4.0">
  <class>Gui::Dialog::DlgSettings3DView</class>
  <widget class="QWidget" name="Gui::Dialog::DlgSettings3DView">
@@ -330,7 +331,7 @@ remember to report this setting as enabled when seeking support.</string>
           </property>
          </widget>
         </item>
-        <item row="5" column="0">
+        <item row="6" column="0">
          <widget class="QLabel" name="textLabel1">
           <property name="text">
            <string>Eye to eye distance for stereo modes</string>
@@ -394,7 +395,7 @@ but slower response to any scene changes.</string>
           </property>
          </widget>
         </item>
-        <item row="5" column="1">
+        <item row="6" column="1">
          <widget class="Gui::PrefDoubleSpinBox" name="FloatSpinBox_EyeDistance">
           <property name="minimumSize">
            <size>
@@ -470,6 +471,89 @@ bounding box size of the 3D object that is currently displayed.</string>
          </widget>
         </item>
         <item row="3" column="0">
+         <widget class="QLabel" name="transparencyTypeLabel">
+          <property name="toolTip">
+           <string>Rendering strategy for transparent geometry. The item order matches the SoGLRenderAction transparency types.</string>
+          </property>
+          <property name="text">
+           <string>Transparency type</string>
+          </property>
+         </widget>
+        </item>
+        <item row="3" column="1">
+         <widget class="Gui::PrefComboBox" name="comboTransparencyType">
+          <property name="toolTip">
+           <string>Rendering strategy for transparent objects. "Per-pixel linked list (OIT)" computes the transparency ordering completely on the GPU, per pixel: most accurate and fast for complex models, requires the Coin fork.</string>
+          </property>
+          <property name="prefEntry" stdset="0">
+           <cstring>TransparencyType</cstring>
+          </property>
+          <property name="prefPath" stdset="0">
+           <cstring>View</cstring>
+          </property>
+          <item>
+           <property name="text">
+            <string>Screen door</string>
+           </property>
+          </item>
+          <item>
+           <property name="text">
+            <string>Add</string>
+           </property>
+          </item>
+          <item>
+           <property name="text">
+            <string>Delayed add</string>
+           </property>
+          </item>
+          <item>
+           <property name="text">
+            <string>Sorted object add</string>
+           </property>
+          </item>
+          <item>
+           <property name="text">
+            <string>Blend</string>
+           </property>
+          </item>
+          <item>
+           <property name="text">
+            <string>Delayed blend</string>
+           </property>
+          </item>
+          <item>
+           <property name="text">
+            <string>Sorted object blend (default)</string>
+           </property>
+          </item>
+          <item>
+           <property name="text">
+            <string>Sorted object sorted triangle add</string>
+           </property>
+          </item>
+          <item>
+           <property name="text">
+            <string>Sorted object sorted triangle blend</string>
+           </property>
+          </item>
+          <item>
+           <property name="text">
+            <string>None</string>
+           </property>
+          </item>
+          <item>
+           <property name="text">
+            <string>Sorted layers blend</string>
+           </property>
+          </item>
+          <item>
+           <property name="text">
+            <string>Per-pixel linked list (OIT)</string>
+           </property>
+          </item>
+         </widget>
+        </item>
+        <item row="4" column="0">
          <widget class="QLabel" name="markerSizeLabel">
           <property name="toolTip">
            <string/>
@@ -479,7 +563,7 @@ bounding box size of the 3D object that is currently displayed.</string>
           </property>
          </widget>
         </item>
-        <item row="3" column="1">
+        <item row="4" column="1">
          <widget class="QComboBox" name="boxMarkerSize">
           <property name="minimumSize">
            <size>
@@ -492,7 +576,7 @@ bounding box size of the 3D object that is currently displayed.</string>
           </property>
          </widget>
         </item>
-        <item row="4" column="0">
+        <item row="5" column="0">
          <widget class="QLabel" name="markerSizeLabel_2">
           <property name="toolTip">
            <string/>
@@ -502,7 +586,7 @@ bounding box size of the 3D object that is currently displayed.</string>
           </property>
          </widget>
         </item>
-        <item row="4" column="1">
+        <item row="5" column="1">
          <widget class="Gui::PrefDoubleSpinBox" name="FloatSpinBox_DatumScale">
           <property name="minimumSize">
            <size>
@@ -539,14 +623,14 @@ bounding box size of the 3D object that is currently displayed.</string>
           </property>
          </widget>
         </item>
-        <item row="6" column="0">
+        <item row="7" column="0">
          <widget class="QLabel" name="maxFrameRateLabel">
           <property name="text">
            <string>Maximum frame rate</string>
           </property>
          </widget>
         </item>
-        <item row="6" column="1">
+        <item row="7" column="1">
          <widget class="Gui::PrefSpinBox" name="SpinBox_MaxFrameRate">
           <property name="minimumSize">
            <size>

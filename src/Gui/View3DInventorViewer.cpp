@@ -1267,14 +1267,30 @@ void View3DInventorViewer::init()
 #endif
 
     // set the transparency and antialiasing settings
-    // NOTE: SORTED_OBJECT_BLEND instead of SORTED_OBJECT_SORTED_TRIANGLE_BLEND:
-    // the latter sorts every triangle of transparent shapes on the CPU per
-    // frame (SoPrimitiveVertexCache::depthSortTriangles), which pegs the GUI
-    // thread on complex models. Object-level sorting keeps correct ordering
-    // between bodies and only forgoes within-body triangle order.
+    // The transparency type is configurable through the parameter
+    // BaseApp/Preferences/View/TransparencyType (int matching
+    // SoGLRenderAction::TransparencyType, exposed in the 3D view
+    // preferences page).
+    // NOTE: the default SORTED_OBJECT_BLEND instead of
+    // SORTED_OBJECT_SORTED_TRIANGLE_BLEND: the latter sorts every
+    // triangle of transparent shapes on the CPU per frame
+    // (SoPrimitiveVertexCache::depthSortTriangles), which pegs the GUI
+    // thread on complex models. Object-level sorting keeps correct
+    // ordering between bodies and only forgoes within-body triangle
+    // order. Value 11 (PPLL_BLEND, "Per-pixel linked list") enables the
+    // Coin fork's order independent transparency: all ordering and
+    // blending happens on the GPU, per pixel, pixel-exact and without
+    // CPU sorting. It requires the fork's libCoin at runtime and falls
+    // back to SORTED_OBJECT_BLEND on contexts without OpenGL 4.3.
+    ParameterGrp::handle hTranspGrp = App::GetApplication().GetParameterGroupByPath(
+        "User parameter:BaseApp/Preferences/View");
+    int transparencyType = static_cast<int>(hTranspGrp->GetInt(
+        "TransparencyType", static_cast<long>(SoGLRenderAction::SORTED_OBJECT_BLEND)));
+    if (transparencyType < 0 || transparencyType > 11) {
+        transparencyType = SoGLRenderAction::SORTED_OBJECT_BLEND;
+    }
     getSoRenderManager()->getGLRenderAction()->setTransparencyType(
-        SoGLRenderAction::SORTED_OBJECT_BLEND
-    );
+        static_cast<SoGLRenderAction::TransparencyType>(transparencyType));
 
     // Settings
     setSeekTime(0.4F);  // NOLINT

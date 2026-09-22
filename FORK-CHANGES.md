@@ -90,6 +90,27 @@ angular-deflection-governed faces (e.g. analytic spheres), which legitimately
 exceeds the requested linear deflection and would otherwise cause a
 remesh on every load.
 
+### 8. Configurable transparency type (incl. PPLL order-independent transparency)
+
+`BaseApp/Preferences/View/TransparencyType` (int, matching
+`SoGLRenderAction::TransparencyType`) selects the 3D view transparency
+mode, with a combo box under Preferences -> Display -> 3D View
+(default and fallback: `SORTED_OBJECT_BLEND`, unchanged from upstream).
+
+The list includes `Per-pixel linked list (OIT)` (PPLL_BLEND, 11):
+order-independent transparency provided by the Coin fork (per-pixel
+linked list / A-buffer with per-sample MSAA compositing and per-sample
+depth rejection). It requires the fork's libCoin at runtime (OpenGL
+4.3+; unsupported contexts fall back to SORTED_OBJECT_BLEND with a
+warning). The `freecad-ppll` launcher script starts FreeCAD with the
+fork Coin preloaded.
+
+The preference applies to all open 3D views immediately. Files changed:
+`src/Gui/View3DInventorViewer.cpp`,
+`src/Gui/PreferencePages/DlgSettings3DView.ui`,
+`src/Gui/PreferencePages/DlgSettings3DViewImp.cpp`; added:
+`freecad-ppll`.
+
 ## Intentionally not included
 
 - The async-recompute work (FreeCAD PR 29757) that the original local

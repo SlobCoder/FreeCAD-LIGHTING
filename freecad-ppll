@@ -1,0 +1,23 @@
+#!/bin/sh
+# SPDX-License-Identifier: LGPL-2.1-or-later
+# SPDX-FileCopyrightText: 2026 SlobCoder <slobcoder@slobcompany.com>
+# SPDX-FileNotice: Part of the FreeCAD-LIGHTING fork - see FORK-CHANGES.md.
+#
+# Start FreeCAD with the Coin fork (PPLL order independent transparency).
+#
+# - loads /mnt/Projekt/coin/build/lib/libCoin.so.80 instead of the system Coin
+# - LD_PRELOAD=libexpat works around a glvnd/libGLX_mesa crash that occurs
+#   when the self-built Coin is injected via LD_LIBRARY_PATH
+# - set COIN_DEBUG_PPLL=1 for per-frame PPLL diagnostics
+#
+# The transparency type itself is configured in FreeCAD:
+#   Edit -> Preferences -> Display -> 3D View -> Transparency type
+#   (choose "Per-pixel linked list (OIT)")
+
+COIN_FORK_LIB=/mnt/Projekt/coin/build/lib
+FREECAD_BIN=/mnt/Projekt/FreeCAD/build/release/bin/FreeCAD
+
+export LD_LIBRARY_PATH="$COIN_FORK_LIB${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+export LD_PRELOAD="/usr/lib/libexpat.so.1${LD_PRELOAD:+:$LD_PRELOAD}"
+
+exec "$FREECAD_BIN" "$@"
