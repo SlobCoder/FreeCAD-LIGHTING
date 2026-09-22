@@ -301,6 +301,11 @@ set(BIM_PARSER_GENERATOR ${CMAKE_CURRENT_SOURCE_DIR}/Resources/ArchSqlParserGene
 
 set(BIM_GENERATED_PARSER ${CMAKE_BINARY_DIR}/Mod/BIM/generated_sql_parser.py)
 
+# Create the output directory at configure time: with parallel builds the
+# fc_copy_sources() steps that populate Mod/BIM may not have run yet when this
+# generator executes, and the Python open() would fail on the missing directory.
+file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/Mod/BIM")
+
 add_custom_command(
     OUTPUT ${BIM_GENERATED_PARSER}
     COMMAND ${Python3_EXECUTABLE} ${BIM_PARSER_GENERATOR} ${BIM_LARK_GRAMMAR} ${BIM_GENERATED_PARSER}
