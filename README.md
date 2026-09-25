@@ -1,51 +1,86 @@
-<a href="https://freecad.org"><img src="/src/Gui/Icons/freecad.svg" height="100px" width="100px"></a>
+# FreeCAD-LIGHTING
 
-### Your own 3D Parametric Modeler
+**FreeCAD-LIGHTING** is an unofficial community fork of
+[FreeCAD](https://github.com/FreeCAD/FreeCAD) (26.3) carrying a rendering
+and performance stack aimed at large assemblies and heavy models.
+It is **not affiliated with or endorsed by** the FreeCAD project or the
+FreeCAD Project Association.
 
-[Website](https://www.freecad.org) •
-[Documentation](https://wiki.freecad.org) •
-[Forum](https://forum.freecad.org/) •
-[Bug tracker](https://github.com/FreeCAD/FreeCAD/issues) •
-[Git repository](https://github.com/FreeCAD/FreeCAD) •
-[Blog](https://blog.freecad.org)
+[![Release](https://img.shields.io/badge/release-v26.3--LIGHTING-blue)](https://github.com/SlobCoder/FreeCAD-LIGHTING/releases/tag/v26.3-LIGHTING)
+&nbsp; [AppImage download](https://github.com/SlobCoder/FreeCAD-LIGHTING/releases/tag/v26.3-LIGHTING)
+&nbsp;·&nbsp; [FORK-CHANGES.md](FORK-CHANGES.md)
+&nbsp;·&nbsp; [Companion Coin fork](https://github.com/SlobCoder/coin)
 
+## What this fork changes
 
-[![Release](https://img.shields.io/github/release/freecad/freecad.svg)](https://github.com/freecad/freecad/releases/latest) [![Crowdin](https://d322cqt584bo4o.cloudfront.net/freecad/localized.svg)](https://crowdin.com/project/freecad)
+| # | Change | Default |
+|---|--------|---------|
+| 1 | Transparency via `SORTED_OBJECT_BLEND` — no per-triangle CPU sorting each frame | on |
+| 2 | Coin vertex-array render path for per-part colors (no immediate-mode color sends) | on |
+| 3 | Color VBO keeps *transparent* bodies on the vertex-array path too | on |
+| 4 | BVH-accelerated ray picking for `SoBrepFaceSet` — face-picking cost essentially eliminated from the frame profile | on |
+| 5 | Coarser interior meshing (`DeflectionInterior` / `AngleInterior`, boundary edges keep full precision) | on (4x / 2x) |
+| 6 | Optional embedded triangulation cache inside the BRep stream (`CacheTriangulation`) | off |
+| 7 | Sidecar mesh cache with zstd compression — warm loads skip BRepMesh entirely (measured 16.6 s → 0.8 s on a 494k-triangle, 2137-face model; blobs shrink to ~23–33 % at >1.4 GB/s decompression) | on |
+| 8 | Configurable transparency type, incl. **PPLL order-independent transparency** (`TransparencyType=11`) via the [Coin fork](https://github.com/SlobCoder/coin) | `SORTED_OBJECT_BLEND` |
+| 9 | **TSSAA 2TX** temporal supersampling (`AntiAliasing=6`): jittered MSAA accumulation with a direct-GL present path; edit mode automatically falls back to sorted transparency (driver-race workaround) | off |
 
-<img src="/.github/images/partdesign.jpg" width="800"/>
+Full details, measured numbers and file lists: [FORK-CHANGES.md](FORK-CHANGES.md).
 
-Overview
---------
+## Preferences cheat sheet
 
-* **Freedom to build what you want**  FreeCAD is an open-source parametric 3D
-modeler for designing real-life objects of any size. Parametric modeling lets
-you modify a design by changing parameters in its model history.
+| Preference | Values |
+|------------|--------|
+| `BaseApp/Preferences/View/TransparencyType` | 0 = `SORTED_OBJECT_BLEND` (default) · 11 = PPLL OIT (needs fork Coin, OpenGL 4.3+) |
+| `BaseApp/Preferences/View/AntiAliasing` | 0–5 = stock modes · 6 = TSSAA 2TX |
+| `Mod/Part/MeshCacheEnabled` / `MeshCacheDirectory` / `MeshCacheMaxSize` / `MeshCacheCompressionLevel` | sidecar mesh cache (default: on, XDG cache, zstd level 3) |
+| `Mod/Part/MeshInteriorDeflection` / `MeshInteriorAngle` | interior meshing coarseness (default 4x / 2x) |
+| `Mod/Part/CacheTriangulation` | embedded BRep triangulation cache (opt-in) |
 
-* **Create 3D from 2D and back** FreeCAD lets you sketch geometry-constrained
-2D shapes and use them as a base to build other objects. It also provides tools
-to adjust dimensions and create high-quality production drawings from 3D models.
+Diagnostic knobs: `FREECAD_DEBUG_TSSAA=1` (TSSAA/GL-present logging) and the
+Coin fork's `COIN_PPLL_*` environment variables.
 
-* **Designed for your needs** FreeCAD is designed to fit a wide range of uses
-including product design, mechanical engineering and architecture,
-whether you are a hobbyist, programmer, experienced CAD user, student or teacher.
+## PPLL and the Coin fork
 
-* **Cross platform** FreeCAD runs on Windows, macOS and Linux operating systems.
+PPLL order-independent transparency is implemented in the companion fork
+[SlobCoder/coin](https://github.com/SlobCoder/coin) (branch `lighting-main`).
+When you build FreeCAD-LIGHTING, that Coin is bundled automatically via the
+`src/3rdParty/coin` submodule. For setups linking a system Coin, the
+`freecad-ppll` launcher script starts FreeCAD with the fork Coin preloaded.
+Unsupported GL contexts fall back to `SORTED_OBJECT_BLEND` with a warning.
 
-* **Underlying technology**
-    * **OpenCASCADE** A powerful geometry kernel, the most important component of FreeCAD
-    * **Coin3D library** Open Inventor-compliant 3D scene representation model
-    * **Python** FreeCAD offers a broad Python API
-    * **Qt** Graphical user interface built with Qt
+## Download
 
+Prebuilt **AppImage** (Linux x86_64, conda-based toolchain for a portable
+glibc baseline, includes the fork Coin with PPLL and TSSAA):
+[v26.3-LIGHTING release](https://github.com/SlobCoder/FreeCAD-LIGHTING/releases/tag/v26.3-LIGHTING)
+— `.AppImage`, `.zsync` (delta updates) and `SHA256` provided. Smoke-tested
+(`freecadcmd` + Pivy/Coin import) before upload.
 
-Installing
-----------
+## Building
 
-Precompiled packages for stable releases are available for Linux on the
-[latest releases page](https://github.com/FreeCAD/FreeCAD/releases/latest).
+Standard FreeCAD build; the bundled Coin/Pivy submodules are used:
 
-Compiling
----------
+```sh
+git submodule update --init --recursive
+# then configure & build as usual (see the FreeCAD Developers Handbook)
+```
 
-See the [Developers Handbook – Getting Started](https://freecad.github.io/DevelopersHandbook/gettingstarted/)
-for build instructions.
+For a reproducible release bundle matching the published AppImage, use the
+pixi-based packaging: `package/bundle/build.sh` followed by
+`package/bundle/linux/create_bundle.sh`.
+
+## Base
+
+Branched from FreeCAD/FreeCAD `main` @ `c2b56826` (2026-09-21).
+
+## License & trademark
+
+All code remains licensed under the **LGPL-2.1-or-later**. Every file
+modified relative to upstream carries a prominent header notice per
+LGPL-2.1 §2b (`Modified 2026 by SlobCoder for the FreeCAD-LIGHTING fork`);
+files added by this fork carry their own headers. See `FORK-CHANGES.md`.
+
+"FreeCAD" and the FreeCAD logo are trademarks of the FreeCAD Project
+Association. This fork uses the name referentially to indicate provenance
+and is not an official FreeCAD distribution.
