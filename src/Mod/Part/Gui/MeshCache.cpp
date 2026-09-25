@@ -440,14 +440,6 @@ bool MeshCache::restoreMesh(const TopoDS_Shape& theShape, const Params& theParam
 
         TopExp_Explorer anExp(aFace, TopAbs_EDGE);
         TopTools_IndexedMapOfShape aSeenEdges;
-        int aEdgeCount = 0;
-        for (; anExp.More(); anExp.Next()) {
-            if (aSeenEdges.Add(TopoDS::Edge(anExp.Current()))) {
-                ++aEdgeCount;
-            }
-        }
-        anExp.Init(aFace, TopAbs_EDGE);
-        aSeenEdges.Clear();
         for (int p = 0; p < aEdgePolygonCount && anExp.More(); anExp.Next()) {
             const TopoDS_Edge& anEdge = TopoDS::Edge(anExp.Current());
             if (!aSeenEdges.Add(anEdge)) {

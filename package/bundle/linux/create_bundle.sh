@@ -138,7 +138,7 @@ chmod a+x ./AppDir/AppRun
   --comp zstd \
   --mksquashfs-opt -Xcompression-level \
   --mksquashfs-opt 22 \
-  -u "gh-releases-zsync|FreeCAD|FreeCAD|${GH_UPDATE_TAG}|FreeCAD*$(uname -m)*.AppImage.zsync" \
+  -u "gh-releases-zsync|SlobCoder|FreeCAD-LIGHTING|${GH_UPDATE_TAG}|FreeCAD*$(uname -m)*.AppImage.zsync" \
   AppDir ${version_name}.AppImage
   # -s --sign-key ${GPG_KEY_ID} \
 

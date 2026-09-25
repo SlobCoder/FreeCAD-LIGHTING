@@ -74,3 +74,7 @@ tsupdate_stdout.log
 # pixi environments
 *.egg-info
 .pixi
+/build/workspace-*/
+package/bundle/linux/AppDir/usr/
+package/bundle/linux/FreeCAD_*.AppImage*
+package/bundle/linux/appimagetool-*.AppImage
