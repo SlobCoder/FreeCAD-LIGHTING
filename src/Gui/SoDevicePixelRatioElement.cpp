@@ -28,6 +28,10 @@
 
 #include "SoDevicePixelRatioElement.h"
 
+#if FREECAD_HAS_COIN_DPR_ELEMENT
+// Coin (retained branch) provides the element; nothing to register here.
+#else
+
 SO_ELEMENT_SOURCE(SoDevicePixelRatioElement);
 
 void SoDevicePixelRatioElement::initClass()
@@ -55,3 +59,5 @@ float SoDevicePixelRatioElement::get(SoState* state)
 
 SoDevicePixelRatioElement::~SoDevicePixelRatioElement()
 {}
+
+#endif // !FREECAD_HAS_COIN_DPR_ELEMENT

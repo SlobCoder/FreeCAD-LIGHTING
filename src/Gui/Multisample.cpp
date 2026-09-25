@@ -33,7 +33,7 @@
 using namespace Gui;
 
 // clang-format off
-static constexpr auto numMSAA {6};
+static constexpr auto numMSAA {9};
 static constexpr auto idStr {0};
 static constexpr auto idEnum {1};
 static constexpr auto idMSAA {2};
@@ -44,6 +44,9 @@ static constexpr std::array<std::tuple<std::string_view, AntiAliasing, int>, num
     {QT_TRANSLATE_NOOP("Gui::Dialog::DlgSettings3DView", "MSAA 4x"), AntiAliasing::MSAA4x, 4},
     {QT_TRANSLATE_NOOP("Gui::Dialog::DlgSettings3DView", "MSAA 6x"), AntiAliasing::MSAA6x, 6},
     {QT_TRANSLATE_NOOP("Gui::Dialog::DlgSettings3DView", "MSAA 8x"), AntiAliasing::MSAA8x, 8},
+    {QT_TRANSLATE_NOOP("Gui::Dialog::DlgSettings3DView", "TSSAA 2TX"), AntiAliasing::TSSAA2TX, 0},
+    {QT_TRANSLATE_NOOP("Gui::Dialog::DlgSettings3DView", "TSSAA 4TX"), AntiAliasing::TSSAA4TX, 0},
+    {QT_TRANSLATE_NOOP("Gui::Dialog::DlgSettings3DView", "TSSAA 8TX"), AntiAliasing::TSSAA8TX, 0},
 }};
 // clang-format on
 
@@ -93,6 +96,20 @@ int Multisample::toSamples(AntiAliasing msaa)
         return std::get<idMSAA>(*it);
     }
     return 0;
+}
+
+int Multisample::toTemporalSamples(AntiAliasing aliasing)
+{
+    switch (aliasing) {
+        case AntiAliasing::TSSAA2TX:
+            return 2;
+        case AntiAliasing::TSSAA4TX:
+            return 4;
+        case AntiAliasing::TSSAA8TX:
+            return 8;
+        default:
+            return 0;
+    }
 }
 
 AntiAliasing Multisample::toAntiAliasing(int samples)

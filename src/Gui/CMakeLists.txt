@@ -861,6 +861,7 @@ SET(View3D_CPP_SRCS
     GLPainter.cpp
     RubberbandOverlay.cpp
     Multisample.cpp
+    TemporalAA.cpp
     MouseSelection.cpp
     SplitView3DInventor.cpp
     View.cpp
@@ -880,6 +881,7 @@ SET(View3D_SRCS
     RubberbandOverlay.h
     GLPainter.h
     Multisample.h
+    TemporalAA.h
     MouseSelection.h
     SplitView3DInventor.h
     View.h

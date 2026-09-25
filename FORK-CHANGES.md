@@ -113,6 +113,33 @@ The preference applies to all open 3D views immediately. Files changed:
 `src/Gui/PreferencePages/DlgSettings3DViewImp.cpp`; added:
 `freecad-ppll`.
 
+### 9. TSSAA temporal supersampling (optional, AntiAliasing = 6)
+
+Setting `BaseApp/Preferences/View/AntiAliasing` to 6 enables "TSSAA 2TX":
+temporal supersampling antialiasing. Each frame is rendered into an
+offscreen MSAA target at a jittered subpixel offset and accumulated into a
+history buffer (2 samples per pixel, convergence over ~15 frames); the
+resolved image is presented through a direct-GL blit path (bypassing
+`QOpenGLWidget::blitFramebuffer`, whose framebuffer-state side effects
+caused GL errors and invisible models with some drivers).
+
+While any document is in edit mode (e.g. sketch editing), the viewer
+temporarily renders the frame with `SORTED_OBJECT_BLEND` transparency
+instead of PPLL and skips TSSAA accumulation — a workaround for a
+Mesa/RADEONSI driver race in the PPLL machinery that could crash during
+edit-mode graph churn; normal rendering resumes after leaving edit mode.
+
+Also includes: audited (SoPath-audited) copies for `So3DAnnotation`
+deferred paths (fixes a dangling-pointer crash on thumbnail saves), an
+updated bundled `glext.h`/`khrplatform.h` (GL extension definitions
+needed by the present path), and `FREECAD_DEBUG_TSSAA=1` /
+`COIN_PPLL_*` diagnostic environment knobs. Files added:
+`src/Gui/TemporalAA.cpp/h`; files changed:
+`src/Gui/View3DInventorViewer.cpp/h`, `src/Gui/Multisample.cpp/h`,
+`src/Gui/SoDevicePixelRatioElement.cpp/h`, `src/Gui/SoFCDB.cpp`,
+`src/Gui/Inventor/So3DAnnotation.cpp`, `src/Gui/CMakeLists.txt`,
+`src/3rdParty/OpenGL/api/**`.
+
 ## Intentionally not included
 
 - The async-recompute work (FreeCAD PR 29757) that the original local

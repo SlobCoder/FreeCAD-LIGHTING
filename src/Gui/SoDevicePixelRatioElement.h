@@ -23,6 +23,18 @@
 
 #pragma once
 
+#if __has_include(<Inventor/elements/SoDevicePixelRatioElement.h>)
+// The retained-coin branch (FreeCAD/coin PR #43) provides this element in
+// Coin itself: alias to it instead of registering a colliding duplicate.
+#include <Inventor/elements/SoDevicePixelRatioElement.h>
+using GuiSoDevicePixelRatioElement = ::SoDevicePixelRatioElement;
+#define FREECAD_HAS_COIN_DPR_ELEMENT 1
+#else
+#define FREECAD_HAS_COIN_DPR_ELEMENT 0
+#endif
+
+#if !FREECAD_HAS_COIN_DPR_ELEMENT
+
 #include <Inventor/elements/SoFloatElement.h>
 
 class SoState;
@@ -47,3 +59,5 @@ public:
 protected:
     virtual ~SoDevicePixelRatioElement();
 };
+
+#endif // !FREECAD_HAS_COIN_DPR_ELEMENT

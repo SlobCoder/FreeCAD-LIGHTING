@@ -105,7 +105,9 @@ SbBool Gui::SoFCDB::isInitialized()
 void Gui::SoFCDB::init()
 {
     SoInteraction::init();
+#if !FREECAD_HAS_COIN_DPR_ELEMENT
     SoDevicePixelRatioElement::initClass();
+#endif
     SoGLRenderActionElement::initClass();
     SoFCInteractiveElement::initClass();
     SoGLWidgetElement::initClass();

@@ -38,6 +38,10 @@ namespace Gui
  * - Smoothing enables OpenGL line and vertex smoothing (basically deprecated)
  * - MSAA is hardware multi sampling (with 2, 4, 6 or 8 passes), a quite common and efficient AA
  * technique
+ * - TSSAA is temporal supersampling (the "TX" modes known from professional DCC viewports):
+ * one jittered frame per repaint, progressively averaged over time while the scene is static.
+ * It needs no multisample surface and converges to supersampling quality, but falls back to
+ * single-sample quality while the view is changing
  */
 //@{
 enum class AntiAliasing
@@ -47,7 +51,10 @@ enum class AntiAliasing
     MSAA2x = 2,
     MSAA4x = 3,
     MSAA6x = 5,
-    MSAA8x = 4
+    MSAA8x = 4,
+    TSSAA2TX = 6,
+    TSSAA4TX = 7,
+    TSSAA8TX = 8
 };
 //@}
 
@@ -59,6 +66,7 @@ public:
     std::vector<std::pair<QString, AntiAliasing>> supported() const;
     static int toSamples(AntiAliasing msaa);
     static AntiAliasing toAntiAliasing(int samples);
+    static int toTemporalSamples(AntiAliasing aliasing);
     static AntiAliasing readMSAAFromSettings();
     static void writeMSAAToSettings(AntiAliasing msaa);
 

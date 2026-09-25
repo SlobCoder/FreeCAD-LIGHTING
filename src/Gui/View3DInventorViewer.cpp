@@ -73,6 +73,7 @@
 #include <Inventor/nodes/SoCube.h>
 #include <Inventor/nodes/SoDirectionalLight.h>
 #include <Inventor/nodes/SoEventCallback.h>
+#include <Inventor/nodes/SoTransparencyType.h>
 #include <Inventor/nodes/SoGroup.h>
 #include <Inventor/nodes/SoLightModel.h>
 #include <Inventor/nodes/SoMaterial.h>
@@ -1232,6 +1233,18 @@ void View3DInventorViewer::init()
     pcEditingRoot = new SoSeparator;
     pcEditingRoot->ref();
     pcEditingRoot->setName("EditingRoot");
+    // Child 0: a classic transparency type for the whole editing subtree.
+    // When the render action runs PPLL_BLEND, the fork's capture shader
+    // triggers a Mesa driver race on the sketch edit geometry during
+    // navigation (deterministic SIGSEGV inside libgallium; bare sketch in
+    // an empty document reproduces it). With this override the edit
+    // geometry defers past the PPLL resolve instead and re-renders with
+    // classic blending (see SoGLRenderAction::handleTransparency), so the
+    // capture shader never touches it. Keep in sync with resetEditingRoot:
+    // children 0 (this node) and 1 (the transform) are static.
+    auto editTransparencyType = new SoTransparencyType;
+    editTransparencyType->value = SoTransparencyType::SORTED_OBJECT_BLEND;
+    pcEditingRoot->addChild(editTransparencyType);
     pcEditingTransform = new SoTransform;
     pcEditingTransform->ref();
     pcEditingTransform->setName("EditingTransform");
@@ -1458,10 +1471,12 @@ void View3DInventorViewer::createStandardCursors()
 
 void View3DInventorViewer::aboutToDestroyGLContext()
 {
+    if (auto gl = qobject_cast<QOpenGLWidget*>(this->viewport())) {
+        gl->makeCurrent();
+    }
+    temporalAA.releaseResources();
+
     if (naviCube) {
-        if (auto gl = qobject_cast<QOpenGLWidget*>(this->viewport())) {
-            gl->makeCurrent();
-        }
         if (naviCubeAnnotation) {
             naviCubeAnnotation->removeAllChildren();
         }
@@ -1711,11 +1726,13 @@ void View3DInventorViewer::setupEditingRoot(SoNode* node, const Base::Matrix4D* 
 
 void View3DInventorViewer::resetEditingRoot(bool updateLinks)
 {
-    if (!editViewProvider || pcEditingRoot->getNumChildren() <= 1) {
+    // Children 0 (classic transparency override) and 1 (transform) are
+    // static; the edit content starts at index 2.
+    if (!editViewProvider || pcEditingRoot->getNumChildren() <= 2) {
         return;
     }
     if (!restoreEditingRoot) {
-        pcEditingRoot->getChildren()->truncate(1);
+        pcEditingRoot->getChildren()->truncate(2);
         return;
     }
     restoreEditingRoot = false;
@@ -1724,7 +1741,7 @@ void View3DInventorViewer::resetEditingRoot(bool updateLinks)
         FC_ERR("WARNING!!! Editing view provider root node is tampered");
     }
     root->addChild(editViewProvider->getTransformNode());
-    for (int i = 1, count = pcEditingRoot->getNumChildren(); i < count; ++i) {
+    for (int i = 2, count = pcEditingRoot->getNumChildren(); i < count; ++i) {
         root->addChild(pcEditingRoot->getChild(i));
     }
     pcEditingRoot->getChildren()->truncate(1);
@@ -3441,6 +3458,31 @@ void View3DInventorViewer::renderGLActionScene(const QColor& backgroundColor, So
     }
 }
 
+bool View3DInventorViewer::updateTemporalAA()
+{
+    const bool wasActive = temporalAA.isActive();
+    temporalAA.setSampleCount(Multisample::toTemporalSamples(Multisample::readMSAAFromSettings()));
+    if (!temporalAA.isActive()) {
+        return false;
+    }
+
+    // Any modification of the rendered roots invalidates the temporal
+    // accumulation: the main scene covers camera moves and geometry changes,
+    // the background/foreground/decoration roots are rendered alongside it.
+    temporalAA.setWatchedNodes(getSoRenderManager()->getSceneGraph(),
+                               backgroundroot,
+                               foregroundroot,
+                               decorationroot);
+
+    // Switching the setting on while the view is idle does not render by
+    // itself; kick one so the accumulation starts instead of waiting for the
+    // next unrelated redraw.
+    if (!wasActive) {
+        getSoRenderManager()->scheduleRedraw();
+    }
+    return true;
+}
+
 void View3DInventorViewer::renderScene()
 {
     ZoneScoped;
@@ -3455,14 +3497,71 @@ void View3DInventorViewer::renderScene()
     glViewport(origin[0], origin[1], size[0], size[1]);
 
     const QColor col = this->backgroundColor();
+
+    auto* glWidget = static_cast<QOpenGLWidget*>(this->viewport());  // NOLINT
+    SoGLRenderAction* renderAction = this->getSoRenderManager()->getGLRenderAction();
+
+    // While a view provider is being edited (e.g. a sketch), render the
+    // frame with classic transparency instead of PPLL. The fork's PPLL
+    // frame machinery (image/SSBO bindings, clear pass, capture draws,
+    // resolve) races inside the Mesa radeonsi driver when the edit
+    // scene's camera sensor mutates the graph between frames during
+    // navigation - deterministic SIGSEGV in libgallium, reproducible
+    // with a bare sketch in an empty document (2026-09-25 bisection:
+    // COIN_PPLL_DISABLE=1 stable, every partial PPLL variant crashes).
+    // Classic blending during edit mode costs nothing visually: the
+    // edit overlay has few transparent faces, and the document's other
+    // transparent bodies are typically hidden while editing.
+    // PPLL_BLEND == 11 is a fork extension; compared as int so this
+    // compiles against the system Coin headers as well.
+    constexpr int PPLL_BLEND_INT = 11;
+    // Any document in edit mode (global state, set before the edit view
+    // provider starts its own setup renders) - covers the edit entry
+    // renders themselves, not just steady-state edit frames.
+    const bool editing = !Gui::Application::Instance->editDocuments().empty();
+    const int frameTransparency = static_cast<int>(renderAction->getTransparencyType());
+    if (editing && frameTransparency == PPLL_BLEND_INT) {
+        renderAction->setTransparencyType(SoGLRenderAction::SORTED_OBJECT_BLEND);
+    }
+
+    // Temporal supersampling path: render the full frame into an offscreen
+    // framebuffer with a subpixel-jittered projection, blend it into the
+    // accumulation history and present the accumulated image. Skipped when
+    // disabled, when the framebuffers could not be created, or while stereo
+    // rendering is active (both eyes share one history and would ghost).
+    QOpenGLFramebufferObject* temporalFbo =
+        updateTemporalAA() && this->stereoMode() == QuarterWidget::MONO
+            ? temporalAA.beginFrame(glWidget, renderAction, QSize(size[0], size[1]))
+            : nullptr;
+
     glClearColor(float(col.redF()), float(col.greenF()), float(col.blueF()), 0.0F);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     glEnable(GL_DEPTH_TEST);
 
-    this->renderGLActionScene(col, this->getSoRenderManager()->getGLRenderAction());
+    this->renderGLActionScene(col, renderAction);
 
     if (shouldRenderDecorations(currentRenderIntent()) && this->axiscrossEnabled) {
         this->drawAxisCross();
+    }
+
+    // Restore the action's transparency type after an edit-mode classic
+    // frame (see the comment at the top of renderScene()).
+    if (editing && frameTransparency == PPLL_BLEND_INT) {
+        renderAction->setTransparencyType(
+            static_cast<SoGLRenderAction::TransparencyType>(frameTransparency));
+    }
+
+    if (temporalFbo) {
+        // Convergence pump: while the accumulated image is not converged yet,
+        // keep asking for repaints. scheduleRedraw() goes through the render
+        // manager's sensor, so the request survives the frame bookkeeping and
+        // is rate-limited like any other redraw.
+        if (temporalAA.endFrame(glWidget,
+                                renderAction,
+                                QRect(origin[0], origin[1], size[0], size[1]))
+            && !this->isAnimating()) {
+            this->getSoRenderManager()->scheduleRedraw();
+        }
     }
 
     // Immediately reschedule to get continuous animation.

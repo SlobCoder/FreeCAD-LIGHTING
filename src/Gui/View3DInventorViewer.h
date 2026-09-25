@@ -60,6 +60,7 @@
 #include "CornerCrossLetters.h"
 #include "View3DInventorSelection.h"
 #include "Quarter/SoQTQuarterAdaptor.h"
+#include "TemporalAA.h"
 
 class QOpenGLFramebufferObject;
 class QOpenGLWidget;
@@ -605,6 +606,7 @@ Q_SIGNALS:
 protected:
     static GLenum getInternalTextureFormat();
     void renderScene();
+    bool updateTemporalAA();
     void renderRubberbandOverlay();
     void renderFramebuffer();
     void renderGLImage();
@@ -702,6 +704,7 @@ private:
 
     RenderType renderType;
     QOpenGLFramebufferObject* framebuffer;
+    TemporalAA temporalAA;
     QImage glImage;
     bool shading;
     SoSwitch* dimensionRoot;

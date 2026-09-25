@@ -34,6 +34,8 @@
 #endif
 
 #include <Inventor/elements/SoCacheElement.h>
+
+#include <Inventor/misc/SoTempPath.h>
 #include <algorithm>
 
 #include "So3DAnnotation.h"
@@ -164,19 +166,35 @@ void So3DAnnotation::GLRenderBelowPath(SoGLRenderAction* action)
         inherited::GLRenderBelowPath(action);
     }
     else {
+        // Revert of the "unaudited SoTempPath copy" experiment: a copied
+        // SoTempPath inherits isauditing == FALSE (SoPath::operator= copies
+        // the flag), leaving the stored delayed path with raw node pointers
+        // that nothing tracks. SoPath::copy() deliberately creates an
+        // audited path instead (see the comment in SoPath::copy(): copying
+        // the audit flag is "not by oversight" omitted). With documents that
+        // mutate their graph between the main pass and the delayed pass
+        // (dependency-cycle recompute churn, sketch edit mode) the unaudited
+        // copy pointed at replaced nodes - crash (pure virtual call / SIGSEGV)
+        // and invisible annotations.
         SoCacheElement::invalidate(action->getState());
-        SoDelayedAnnotationsElement::addDelayedPath(action->getState(), action->getCurPath()->copy());
+        SoDelayedAnnotationsElement::addDelayedPath(
+            action->getState(),
+            action->getCurPath()->copy());
     }
 }
 
 void So3DAnnotation::GLRenderInPath(SoGLRenderAction* action)
 {
+    // NOTE: keep in sync with GLRenderBelowPath() - audited copy, see the
+    // revert comment there.
     if (render) {
         inherited::GLRenderInPath(action);
     }
     else {
         SoCacheElement::invalidate(action->getState());
-        SoDelayedAnnotationsElement::addDelayedPath(action->getState(), action->getCurPath()->copy());
+        SoDelayedAnnotationsElement::addDelayedPath(
+            action->getState(),
+            action->getCurPath()->copy());
     }
 }
 
